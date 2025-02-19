@@ -88,7 +88,7 @@
             - "export HADOOP_HOME={{ HADOOP_HOME }}"
             - "export YARN_CONF_DIR={{ HADOOP_HOME }}/etc/hadoop"
             - "export HADOOP_CONF_DIR={{ HADOOP_HOME }}/etc/hadoop"
-            - "export SPARK_DIST_CLASSPATH=$(hadoop classpath):{{ HBASE_HOME }}/lib/*"
+            - "export SPARK_DIST_CLASSPATH=/usr/local/hadoop/etc/hadoop:/usr/local/hadoop/share/hadoop/common/lib/*:/usr/local/hadoop/share/hadoop/common/*:/usr/local/hadoop/share/hadoop/hdfs:/usr/local/hadoop/share/hadoop/hdfs/lib/*:/usr/local/hadoop/share/hadoop/hdfs/*:/usr/local/hadoop/share/hadoop/mapreduce/*:/usr/local/hadoop/share/hadoop/yarn:/usr/local/hadoop/share/hadoop/yarn/lib/*:/usr/local/hadoop/share/hadoop/yarn/*:{{ HBASE_HOME }}/lib/*"
 
     - name: Copy spark-defaults.conf template
       command: cp /usr/local/spark/conf/spark-defaults.conf.template /usr/local/spark/conf/spark-defaults.conf

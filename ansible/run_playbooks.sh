@@ -42,7 +42,7 @@ ansible-playbook ./yaml_files/create_hbase_tables.yml
 # 11. Spark Connect 시작
 echo "Running start_spark.yml"
 #ansible-playbook ./yaml_files/start_spark.yml
-docker exec -it /usr/local/spark/sbin/start-connect-server.sh   --conf spark.connect.grpc.binding.port=33465 --packages org.apache.spark:spark-connect_2.12:3.4.4
+docker exec -it master1 /usr/local/spark/sbin/start-connect-server.sh   --conf spark.connect.grpc.binding.port=33465 --packages org.apache.spark:spark-connect_2.12:3.4.4
 
 echo "All Playbooks Executed Successfully!"
 
