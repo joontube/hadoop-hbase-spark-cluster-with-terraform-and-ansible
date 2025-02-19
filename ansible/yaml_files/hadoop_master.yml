@@ -1,0 +1,44 @@
+- name: Configure Hadoop on master1
+  hosts: master1
+  become: yes
+
+  tasks:
+  - name: Create Hadoop directories
+    shell: |
+      cd /usr/local/hadoop
+      mkdir -p hadoop_tmp/hdfs/namenode
+      mkdir -p hadoop_tmp/hdfs/datanode
+      chmod 777 hadoop_tmp/
+
+  - name: Update hadoop-env.sh
+    lineinfile:
+      path: /usr/local/hadoop/etc/hadoop/hadoop-env.sh
+      line: "{{ item }}"
+      insertafter: EOF
+    loop:
+      - 'export JAVA_HOME=''/usr/lib/jvm/java-11-openjdk-amd64'''
+      - 'export HDFS_NAMENODE_USER=root'
+      - 'export HDFS_DATANODE_USER=root'
+      - 'export HDFS_SECONDARYNAMENODE_USER=root'
+      - 'export YARN_NODEMANAGER_USER=root'
+      - 'export YARN_RESOURCEMANAGER_USER=root'
+
+  - name: Add HDFS properties to hdfs-site.xml
+    xml:
+      pretty_print: yes
+      path: /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+      xpath: /configuration
+      add_children:
+        - property:
+            name: dfs.replication
+            value: "3"
+        - property:
+            name: dfs.permissions
+            value: "false"
+        - property:
+            name: dfs.namenode.name.dir
+            value: /usr/local/hadoop/hadoop_tmp/hdfs/namenode
+        - property:
+            name: dfs.datanode.data.dir
+            value: /usr/local/hadoop/hadoop_tmp/hdfs/datanode
+

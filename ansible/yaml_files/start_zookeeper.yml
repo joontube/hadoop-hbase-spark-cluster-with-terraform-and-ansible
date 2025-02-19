@@ -1,0 +1,30 @@
+- name: Start Zookeepers in all nodes
+  hosts: master1,worker1,worker2
+  become: yes
+  tasks:
+
+    - name: Start Zookeepers
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/zookeeper/bin"
+      shell: zkServer.sh start
+      register: zk_start_output
+
+    - name: Display zk_start output
+      debug:
+        var: zk_start_output.stdout
+
+    - name: Show Zookeepers status
+      shell: /usr/local/zookeeper/bin/zkServer.sh status
+      register: zk_status_output
+
+    - name: Display status output
+      debug:
+        var: zk_status_output.stdout
+
+    - name: Check JPS
+      shell: jps
+      register: jps_output
+
+    - name: Display JPS output
+      debug:
+        var: jps_output.stdout

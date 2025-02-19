@@ -1,0 +1,129 @@
+- name: Install and Configure ZooKeeper
+  hosts: all
+  become: yes
+  tasks:
+    - name: Download ZooKeeper
+      get_url:
+        url: https://dlcdn.apache.org/zookeeper/zookeeper-3.9.3/apache-zookeeper-3.9.3-bin.tar.gz
+        dest: /root
+        mode: '0644'
+
+    - name: Extract Zookeeper
+      ansible.builtin.unarchive:
+        src: /root/apache-zookeeper-3.9.3-bin.tar.gz
+        dest: /usr/local/
+        remote_src: yes
+
+
+    - name: Move ZooKeeper to correct directory
+      command: mv /usr/local/apache-zookeeper-3.9.3-bin /usr/local/zookeeper
+
+
+    - name: Change ownership of ZooKeeper directory
+      file:
+        path: /usr/local/zookeeper
+        owner: "root"
+        group: "root"
+        recurse: yes
+
+
+    - name: Remove Zookeeper archive
+      file:
+        path: /root/apache-zookeeper-3.9.3-bin.tar.gz
+        state: absent
+
+    - name: Copy zoo_sample.cfg to zoo.cfg
+      copy:
+        content: ""
+        dest: /usr/local/zookeeper/conf/zoo.cfg
+        mode: '0644'
+
+    - name: Add environment variables to .bashrc
+      lineinfile:
+        path: /root/.bashrc
+        line: "{{ item }}"
+        state: present
+      loop:
+        - 'export ZOOKEEPER_HOME=/usr/local/zookeeper'
+        - 'export PATH=$PATH:$ZOOKEEPER_HOME/bin'
+
+
+    - name: Configure zoo.cfg
+      block:
+        - name: Set dataDir in zoo.cfg
+          lineinfile:
+            path: /usr/local/zookeeper/conf/zoo.cfg
+            line: "dataDir=/usr/local/zookeeper/data"
+            state: present
+
+        - name: Set clientPort in zoo.cfg
+          lineinfile:
+            path: /usr/local/zookeeper/conf/zoo.cfg
+            line: "clientPort=2181"
+            state: present
+
+        - name: Set tickTime in zoo.cfg
+          lineinfile:
+            path: /usr/local/zookeeper/conf/zoo.cfg
+            line: "tickTime=2000"
+            state: present
+
+        - name: Set initLimit in zoo.cfg
+          lineinfile:
+            line: "initLimit=10"
+            path: /usr/local/zookeeper/conf/zoo.cfg
+            state: present
+
+        - name: Set syncLimit in zoo.cfg
+          lineinfile:
+            path: /usr/local/zookeeper/conf/zoo.cfg
+            line: "syncLimit=5"
+            state: present
+
+
+        - name: Set server configurations in zoo.cfg
+          lineinfile:
+            path: /usr/local/zookeeper/conf/zoo.cfg
+            line: "{{ item }}"
+            state: present
+          loop:
+            - "server.1=master1:2888:3888"
+            - "server.2=worker1:2888:3888"
+            - "server.3=worker2:2888:3888"
+
+    - name: Create data directory for ZooKeeper
+      file:
+        path: /usr/local/zookeeper/data
+        state: directory
+        mode: '0755'
+
+    - name: Ensure data directory exists
+      file:
+        path: /usr/local/zookeeper/data
+        state: directory
+        mode: '0755'
+
+    - name: Set myid for each node
+      block:
+        - name: Set myid for master1
+          copy:
+            content: "1"
+            dest: /usr/local/zookeeper/data/myid
+            mode: '0644'
+          when: inventory_hostname == "master1"
+
+        - name: Set myid for worker1
+          copy:
+            content: "2"
+            dest: /usr/local/zookeeper/data/myid
+            mode: '0644'
+          when: inventory_hostname == "worker1"
+
+        - name: Set myid for worker2
+          copy:
+            content: "3"
+            dest: /usr/local/zookeeper/data/myid
+            mode: '0644'
+          when: inventory_hostname == "worker2"
+
+

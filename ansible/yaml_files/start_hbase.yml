@@ -1,0 +1,96 @@
+- name: Set environment variables and run script
+  hosts: master1
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: Set environment variables and run HBase start script
+      shell: |
+        export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+        export HADOOP_HOME=/usr/local/hadoop
+        export HADOOP_MAPRED_HOME=/usr/local/hadoop
+        export HADOOP_COMMON_HOME=/usr/local/hadoop
+        export HADOOP_HDFS_HOME=/usr/local/hadoop
+        export YARN_HOME=/usr/local/hadoop
+        export HADOOP_COMMON_LIB_NATIVE_DIR=/usr/local/hadoop/lib/native
+        export HADOOP_OPTS="-Djava.library.path=/usr/local/hadoop/lib/native"
+        export ZOOKEEPER_HOME=/usr/local/zookeeper
+        export HBASE_HOME=/usr/local/hbase
+        export HBASE_CONF_DIR=/usr/local/hbase/conf
+        export SPARK_HOME=/usr/local/spark
+        bash -x /usr/local/hbase/bin/start-hbase.sh
+      args:
+        executable: /bin/bash
+
+
+
+    - name: Wait for HBase to register in ZooKeeper
+      shell: "zkCli.sh -server localhost:2181 get /hbase/master || echo 'Master not registered yet'"
+      register: zk_master_check
+      retries: 30
+      delay: 10
+      until: "'/hbase/master' in zk_master_check.stdout"
+
+    - name: Check if HMaster is running
+      shell: "jps | grep HMaster || echo 'HMaster not running'"
+      register: hmaster_check
+      changed_when: false
+
+    - name: Display HMaster status
+      debug:
+        msg: "{{ hmaster_check.stdout }}"
+
+    - name: Wait for HBase to register in ZooKeeper
+      wait_for:
+        host: "localhost"
+        path: "/hbase/master"
+        state: "present"
+        delay: 10
+        timeout: 300
+      when: "'HMaster not running' not in hmaster_check.stdout"
+
+    - name: Start HBase REST
+      shell: /usr/local/hbase/bin/hbase-daemon.sh start rest
+      register: hbase_rest_output
+
+    - name: Display HBase REST output
+      debug:
+        var: hbase_rest_output.stdout
+
+- name: Check JPS
+  hosts: master1,worker1,worker2
+  become: yes
+  tasks:
+
+    - name: Check JPS
+      shell: jps
+      register: jps_output
+
+    - name: Display JPS output
+      debug:
+        var: jps_output.stdout
+
+- name: Create HBase tables
+  hosts: master1
+  become: yes
+  tasks:
+    - name: Create HBase table 'news_comments'
+      shell: |
+        echo "create 'news_comments', {NAME => 'search'}, {NAME => 'news'}, {NAME => 'comments'}" | /usr/local/hbase/bin/hbase shell
+      args:
+        executable: /bin/bash
+      register: result_news_comments
+
+    - name: Debug output for 'news_comments' creation
+      debug:
+        msg: "{{ result_news_comments.stdout }}"
+
+    - name: Create HBase table 'news_info'
+      shell: |
+        echo "create 'news_info', {NAME => 'search'}, {NAME => 'news'}, {NAME => 'comments'}, {NAME => 'status'}" | /usr/local/hbase/bin/hbase shell
+      args:
+        executable: /bin/bash
+      register: result_news_info
+
+    - name: Debug output for 'news_info' creation
+      debug:
+        msg: "{{ result_news_info.stdout }}"

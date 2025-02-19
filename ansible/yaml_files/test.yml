@@ -1,0 +1,9 @@
+- name: Check hostname
+  hosts: master1
+  tasks:
+    - name: Print hostname
+      command: hostname
+      register: result
+    - debug: 
+        var: result.stdout
+

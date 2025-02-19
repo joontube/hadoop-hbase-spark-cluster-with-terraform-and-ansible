@@ -1,0 +1,143 @@
+- name: Set up HBase in containers
+  hosts: all
+  become: yes
+  tasks:
+    - name: Update package lists
+      apt:
+        update_cache: yes
+
+    - name: Upgrade packages
+      apt:
+        upgrade: yes
+        force_apt_get: yes
+
+    - name: Download HBase
+      get_url:
+        url: http://mirror.apache-kr.org/hbase/stable/hbase-2.5.10-bin.tar.gz
+        dest: /root/hbase-2.5.10-bin.tar.gz
+
+    - name: Extract HBase
+      ansible.builtin.unarchive:
+        src: /root/hbase-2.5.10-bin.tar.gz
+        dest: /usr/local/
+        remote_src: yes
+
+    # Rename /usr/local/hbase-2.5.10 to /usr/local/hbase
+    - name: Rename HBase directory
+      command: mv /usr/local/hbase-2.5.10 /usr/local/hbase
+      args:
+        creates: /usr/local/hbase
+
+    - name: Remove HBase archive
+      file:
+        path: /root/hbase-2.5.10-bin.tar.gz
+        state: absent
+
+    - name: Configure regionservers
+      block:
+        - name: Create regionservers file
+          copy:
+            content: ""
+            dest: /usr/local/hbase/conf/regionservers
+            mode: '0644'
+
+        - name: Set regionservers
+          lineinfile:
+            path: /usr/local/hbase/conf/regionservers
+            line: "{{ item }}"
+            state: present
+          loop:
+            - "worker1"
+            - "worker2"
+
+    - name: Add environment variables to .bashrc
+      lineinfile:
+        path: /root/.bashrc
+        line: "{{ item }}"
+        state: present
+      loop:
+        - 'export HBASE_HOME=/usr/local/hbase'
+        - 'export HBASE_CONF_DIR=/usr/local/hbase/conf'
+        - 'export PATH=$PATH:/usr/local/hbase/bin'
+        - 'export HBASE_LOG_DIR=$HADOOP_LOG_DIR'
+
+    - name: Source .bashrc
+      shell: "source /root/.bashrc"
+      args:
+        executable: /bin/bash
+
+    - name: Remove hbase-site.xml if it exists
+      file:
+        path: /usr/local/hbase/conf/hbase-site.xml
+        state: absent
+
+
+    - name: Create hbase-site.xml with basic structure if it does not exist
+      copy:
+        dest: /usr/local/hbase/conf/hbase-site.xml
+        content: |
+          <?xml version="1.0" encoding="UTF-8"?>
+          <configuration>
+          </configuration>
+        mode: '0644'
+        force: yes  # 파일이 이미 존재하면 덮어쓰기
+
+          
+    - name: Create and add HBase properties to hbase-site.xml
+      xml:
+        pretty_print: yes
+        path: /usr/local/hbase/conf/hbase-site.xml
+        state: present
+        xpath: /configuration
+        add_children:
+          - property:
+              name: hbase.master.hostname
+              value: master1
+          - property:
+              name: hbase.master
+              value: master1:16000
+          - property:
+              name: hbase.wal.provider
+              value: filesystem
+          - property:
+              name: hbase.rest.port
+              value: "8081"
+          - property:
+              name: hbase.regionserver.port
+              value: "16020"
+          - property:
+              name: hbase.rootdir
+              value: hdfs://master1:8020/hbase
+          - property:
+              name: hbase.cluster.distributed
+              value: "true"
+          - property:
+              name: hbase.zookeeper.property.clientPort
+              value: "2181"
+          - property:
+              name: hbase.zookeeper.quorum
+              value: master1,worker1,worker2
+          - property:
+              name: hbase.zookeeper.property.dataDir
+              value: /usr/local/zookeeper
+          - property:
+              name: hbase.rpc.controllerfactory.class
+              value: org.apache.hadoop.hbase.ipc.RpcControllerFactory
+
+    - name: Configure hbase-env.sh
+      become: yes
+      blockinfile:
+        path: /usr/local/hbase/conf/hbase-env.sh
+        block: |
+          export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+          export HBASE_MANAGES_ZK=false
+          export HBASE_REGIONSERVERS=/usr/local/hbase/conf/regionservers
+          export HBASE_OPTS="$HBASE_OPTS -Dfile.encoding=UTF-8"
+        marker: "# {mark} HBase environment settings"
+        state: present
+
+    - name: Configure backup-masters
+      copy:
+        content: "worker1"
+        dest: /usr/local/hbase/conf/backup-masters
+        mode: '0644'

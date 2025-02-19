@@ -1,0 +1,301 @@
+- name: Set up Hadoop in containers
+  hosts: hadoop
+  become: yes
+  tasks:
+    - name: Update package lists
+      apt:
+        update_cache: yes
+    
+    - name: Upgrade packages
+      apt:
+        upgrade: yes   
+        force_apt_get: yes
+
+    - name: Download Hadoop
+      get_url:
+        url: http://apache.mirror.cdnetworks.com/hadoop/common/hadoop-3.4.1/hadoop-3.4.1.tar.gz
+        dest: /root/hadoop-3.4.1.tar.gz
+
+    - name: Extract Hadoop
+      ansible.builtin.unarchive:
+        src: /root/hadoop-3.4.1.tar.gz
+        dest: /usr/local/
+        remote_src: yes
+
+    # Rename /usr/local/hadoop-3.4.1 to /usr/local/hadoop
+    - name: Rename Hadoop directory
+      command: mv /usr/local/hadoop-3.4.1 /usr/local/hadoop
+      args:
+        creates: /usr/local/hadoop
+
+
+    - name: Remove Hadoop archive
+      file:
+        path: /root/hadoop-3.4.1.tar.gz
+        state: absent
+
+    - name: Add environment variables to .bashrc
+      lineinfile:
+        path: /root/.bashrc
+        line: "{{ item }}"
+        state: present
+      loop:
+        - 'export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64'
+        - 'export HADOOP_HOME=/usr/local/hadoop'
+        - 'export PATH=$PATH:$HADOOP_HOME/bin'
+        - 'export PATH=$PATH:$HADOOP_HOME/sbin'
+        - 'export PATH=$PATH:$JAVA_HOME/bin'
+        - 'export HADOOP_MAPRED_HOME=$HADOOP_HOME'
+        - 'export HADOOP_COMMON_HOME=$HADOOP_HOME'
+        - 'export HADOOP_HDFS_HOME=$HADOOP_HOME'
+        - 'export YARN_HOME=$HADOOP_HOME'
+        - 'export HADOOP_COMMON_LIB_NATIVE_DIR=$HADOOP_HOME/lib/native'
+        - 'export HADOOP_OPTS="-Djava.library.path=$HADOOP_HOME/lib/native"'
+
+    - name: Source .bashrc
+      shell: "source /root/.bashrc"
+      args:
+        executable: /bin/bash
+
+    # core-site.xml
+    - name: Add fs.defaultFS property to core-site.xml
+      xml:
+        pretty_print: yes
+        path: /usr/local/hadoop/etc/hadoop/core-site.xml
+        xpath: /configuration
+        add_children:
+          - property:
+              name: fs.defaultFS
+              value: hdfs://master1:8020
+
+    # yarn-site.xml
+    - name: Add YARN properties to yarn-site.xml
+      xml:
+        pretty_print: yes
+        path: /usr/local/hadoop/etc/hadoop/yarn-site.xml
+        xpath: /configuration
+        add_children:
+          - property:
+              name: yarn.nodemanager.aux-services
+              value: mapreduce_shuffle
+          - property:
+              name: yarn.nodemanager.aux-services.mapreduce.shuffle.class
+              value: org.apache.hadoop.mapred.ShuffleHandler
+
+    # mapred-site.xml
+    - name: Add MapReduce properties to mapred-site.xml
+      xml:
+        pretty_print: yes
+        path: /usr/local/hadoop/etc/hadoop/mapred-site.xml
+        xpath: /configuration
+        add_children:
+          - property:
+              name: mapreduce.framework.name
+              value: yarn
+          - property:
+              name: yarn.app.mapreduce.am.env
+              value: HADOOP_MAPRED_HOME=$HADOOP_HOME
+          - property:
+              name: mapreduce.map.env
+              value: HADOOP_MAPRED_HOME=$HADOOP_HOME
+          - property:
+              name: mapreduce.reduce.env
+              value: HADOOP_MAPRED_HOME=$HADOOP_HOME
+
+
+    # Ensure the masters file exists
+    - name: Create masters file if not present
+      copy:
+        content: ""
+        dest: /usr/local/hadoop/etc/hadoop/masters
+        mode: '0644'
+
+    # Ensure 'master1' is present in masters file
+    - name: Add master1 to masters file
+      lineinfile:
+        path: /usr/local/hadoop/etc/hadoop/masters
+        line: "master1"
+        state: present
+
+
+    # 10. Ensure 'master1', 'worker1', and 'worker2' are present in workers file
+    - name: Manage workers file
+      block:
+        - lineinfile:
+            path: /usr/local/hadoop/etc/hadoop/workers
+            regexp: '^localhost$'
+            state: absent
+
+        - lineinfile:
+            path: /usr/local/hadoop/etc/hadoop/workers
+            line: "{{ item }}"
+            state: present
+          loop:
+            - master1
+            - worker1
+            - worker2
+
+- name: Setup SSH Key-based Authentication
+  hosts: all
+  become: yes
+  tasks:
+    - name: Ensure .ssh directory exists
+      file:
+        path: ~/.ssh
+        state: directory
+        mode: '0700'
+
+    - name: Generate SSH key if not exists
+      command: ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+      args:
+        creates: ~/.ssh/id_rsa
+
+    - name: Ensure public key file exists
+      stat:
+        path: ~/.ssh/id_rsa.pub
+      register: pub_key_file
+
+    - name: Fetch public key from each host
+      shell: cat ~/.ssh/id_rsa.pub
+      register: ssh_pub_key
+      changed_when: false
+      when: pub_key_file.stat.exists
+
+    - name: Store SSH public key in hostvars
+      set_fact:
+        my_ssh_key: "{{ ssh_pub_key.stdout }}"
+
+- name: Aggregate all SSH keys on localhost
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Fetch public key from localhost
+      shell: cat ~/.ssh/id_rsa.pub
+      register: local_ssh_key
+      changed_when: false
+
+    - name: Collect all SSH keys from hosts
+      set_fact:
+        global_ssh_keys: "{{ groups['all'] | map('extract', hostvars, 'my_ssh_key') | select('defined') | list }}"
+
+    - name: Add localhost SSH key to global_ssh_keys
+      set_fact:
+        global_ssh_keys: "{{ global_ssh_keys + [local_ssh_key.stdout] }}"
+
+    - name: Debug aggregated SSH keys
+      debug:
+        var: global_ssh_keys
+
+    - name: Convert list to string
+      set_fact:
+        ssh_keys: "{{ global_ssh_keys | join('\n') }}"
+
+- name: Deploy SSH Keys to All Hosts
+  hosts: all
+  become: yes
+  tasks:
+    - name: Ensure authorized_keys file has correct permissions
+      file:
+        path: ~/.ssh/authorized_keys
+        state: touch
+        mode: '0600'
+
+    - name: Ensure authorized_keys contains all SSH keys
+      copy:
+        content: "{{ hostvars['localhost']['ssh_keys'] }}"
+        dest: ~/.ssh/authorized_keys
+        mode: '0600'
+
+
+- name: Configure Hadoop on master1
+  hosts: master1
+  become: yes
+
+  tasks:
+  - name: Create Hadoop directories
+    shell: |
+      cd /usr/local/hadoop
+      mkdir -p hadoop_tmp/hdfs/namenode
+      mkdir -p hadoop_tmp/hdfs/datanode
+      chmod 777 hadoop_tmp/
+
+  - name: Update hadoop-env.sh
+    lineinfile:
+      path: /usr/local/hadoop/etc/hadoop/hadoop-env.sh
+      line: "{{ item }}"
+      insertafter: EOF
+    loop:
+      - 'export JAVA_HOME=''/usr/lib/jvm/java-11-openjdk-amd64'''
+      - 'export HDFS_NAMENODE_USER=root'
+      - 'export HDFS_DATANODE_USER=root'
+      - 'export HDFS_SECONDARYNAMENODE_USER=root'
+      - 'export YARN_NODEMANAGER_USER=root'
+      - 'export YARN_RESOURCEMANAGER_USER=root'
+
+  - name: Add HDFS properties to hdfs-site.xml
+    xml:
+      pretty_print: yes
+      path: /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+      xpath: /configuration
+      add_children:
+        - property:
+            name: dfs.replication
+            value: "3"
+        - property:
+            name: dfs.permissions
+            value: "false"
+        - property:
+            name: dfs.namenode.name.dir
+            value: /usr/local/hadoop/hadoop_tmp/hdfs/namenode
+        - property:
+            name: dfs.datanode.data.dir
+            value: /usr/local/hadoop/hadoop_tmp/hdfs/datanode
+
+
+
+
+
+- name: Configure Hadoop on worker nodes
+  hosts: worker1,worker2
+  become: yes
+  tasks:
+    # 1. Create Hadoop directories
+    - name: Create Hadoop directories
+      shell: |
+        cd /usr/local/hadoop
+        mkdir -p hadoop_tmp/hdfs/datanode
+        chmod 777 hadoop_tmp/
+      args:
+        creates: /usr/local/hadoop/hadoop_tmp/hdfs/datanode
+
+    # 2. Update hadoop-env.sh
+    - name: Update hadoop-env.sh
+      lineinfile:
+        path: /usr/local/hadoop/etc/hadoop/hadoop-env.sh
+        line: 'export JAVA_HOME=''/usr/lib/jvm/java-11-openjdk-amd64'''
+        insertafter: EOF
+
+
+    # 3. Ensure <configuration> element exists in hdfs-site.xml
+    - name: Ensure <configuration> element exists in hdfs-site.xml
+      xml:
+        path: /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+        xpath: /configuration
+        state: present
+
+    # 4. Add HDFS properties using the XML module
+    - name: Add HDFS properties to hdfs-site.xml
+      xml:
+        pretty_print: yes
+        path: /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+        xpath: /configuration
+        add_children:
+          - property:
+              name: dfs.replication
+              value: "2"
+          - property:
+              name: dfs.permissions
+              value: "false"
+          - property:
+              name: dfs.datanode.data.dir
+              value: "/usr/local/hadoop/hadoop_tmp/hdfs/datanode"

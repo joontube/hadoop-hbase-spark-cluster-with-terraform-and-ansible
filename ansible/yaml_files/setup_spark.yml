@@ -1,0 +1,124 @@
+- name: Install and Configure Spark
+  hosts: all
+  become: yes
+  vars:
+    HBASE_HOME: /usr/local/hbase
+    JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
+    HADOOP_HOME: /usr/local/hadoop
+  tasks:
+    - name: Download Spark
+      get_url:
+        url: https://dlcdn.apache.org/spark/spark-3.4.4/spark-3.4.4-bin-hadoop3.tgz
+        dest: /root
+        mode: '0644'
+
+    - name: Extract Spark
+      ansible.builtin.unarchive:
+        src: /root/spark-3.4.4-bin-hadoop3.tgz
+        dest: /usr/local/
+        remote_src: yes
+
+    - name: Move Spark to correct directory
+      command: mv /usr/local/spark-3.4.4-bin-hadoop3 /usr/local/spark
+
+    - name: Remove downloaded Spark archive
+      file:
+        path: /root/spark-3.4.4-bin-hadoop3.tgz
+        state: absent
+
+    - name: Change ownership of Spark directory
+      file:
+        path: /usr/local/spark
+        owner: "root"
+        group: "root"
+        recurse: yes
+
+
+    - name: Add environment variables to .bashrc
+      lineinfile:
+        path: /root/.bashrc
+        line: "{{ item }}"
+        state: present
+      loop:
+        - 'export SPARK_HOME=/usr/local/spark'
+        - 'export PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin'
+
+
+    - name: Ensure /usr/local/spark/lib directory exists
+      file:
+        path: /usr/local/spark/lib
+        state: directory
+        mode: '0755'
+
+    - name: Copy JAR files from local to remote
+      copy:
+        src: "{{ item }}"
+        dest: /usr/local/spark/lib/
+        mode: '0644'
+      with_fileglob:
+        - "../lib/*.jar"
+
+
+    - name: Copy JAR files from local to remote
+      copy:
+        src: "{{ item }}"
+        dest: /usr/local/hbase/lib/
+        mode: '0644'
+      with_fileglob:
+        - "../lib/*.jar"
+
+    - name: Copy spark-env.sh template
+      command: cp /usr/local/spark/conf/spark-env.sh.template /usr/local/spark/conf/spark-env.sh
+
+    - name: Configure spark-env.sh
+      block:
+        - name: Set Spark environment variables
+          lineinfile:
+            path: /usr/local/spark/conf/spark-env.sh
+            line: "{{ item }}"
+            state: present
+          with_items:
+            - "export SPARK_MASTER_HOST=master1"
+            - "export SPARK_MASTER_PORT=7077"
+            - "export SPARK_MASTER_WEBUI_PORT=8082"
+            - "export SPARK_WORKER_WEBUI_PORT=8083"
+            - "export SPARK_WORKER_CORES=1"
+            - "export SPARK_WORKER_MEMORY=2g"
+            - "export JAVA_HOME={{ JAVA_HOME }}"
+            - "export HADOOP_HOME={{ HADOOP_HOME }}"
+            - "export YARN_CONF_DIR={{ HADOOP_HOME }}/etc/hadoop"
+            - "export HADOOP_CONF_DIR={{ HADOOP_HOME }}/etc/hadoop"
+            - "export SPARK_DIST_CLASSPATH=$(hadoop classpath):{{ HBASE_HOME }}/lib/*"
+
+    - name: Copy spark-defaults.conf template
+      command: cp /usr/local/spark/conf/spark-defaults.conf.template /usr/local/spark/conf/spark-defaults.conf
+
+    - name: Configure spark-defaults.conf
+      block:
+        - name: Set Spark default packages
+          lineinfile:
+            path: /usr/local/spark/conf/spark-defaults.conf
+            line: "{{ item }}"
+            state: present
+          with_items:
+            - "spark.jars    /usr/local/spark/lib/hbase-spark-1.1.0-SNAPSHOT.jar,/usr/local/spark/lib/hbase-spark-protocol-shaded-1.1.0-SNAPSHOT.jar"
+
+    - name: Create workers file if it does not exist
+      command: touch /usr/local/spark/conf/workers
+
+
+    - name: Add workers in workers file
+      blockinfile:
+        path: /usr/local/spark/conf/workers
+        block: |
+          worker1
+          worker2
+        state: present
+
+
+    - name: Configure hbase-env.sh
+      lineinfile:
+        path: "{{ HBASE_HOME }}/conf/hbase-env.sh"
+        line: "export HBASE_CLASSPATH={{ HBASE_HOME }}/lib/scala-library-2.12.17.jar:{{ HBASE_HOME }}/lib/hbase-spark-1.1.0-SNAPSHOT.jar:{{ HBASE_HOME }}/lib/hbase-spark-protocol-shaded-1.1.0-SNAPSHOT.jar"
+        state: present
+        insertafter: EOF

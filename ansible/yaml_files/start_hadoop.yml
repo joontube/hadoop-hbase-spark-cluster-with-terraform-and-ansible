@@ -1,0 +1,30 @@
+- name: Format HDFS NameNode and start Hadoop services
+  hosts: master1
+  become: yes
+  tasks:
+    
+    - name: Format HDFS NameNode
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/hadoop/bin"
+      shell: hdfs namenode -format
+      register: format_output
+
+    - name: Display format output
+      debug:
+        var: format_output.stdout
+
+    - name: Start Hadoop services
+      shell: /usr/local/hadoop/sbin/start-all.sh
+      register: start_output
+
+    - name: Display start output
+      debug:
+        var: start_output.stdout
+
+    - name: Check JPS
+      shell: jps
+      register: jps_output
+
+    - name: Display JPS output
+      debug:
+        var: jps_output.stdout

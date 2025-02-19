@@ -1,0 +1,45 @@
+- name: Configure Hadoop on worker nodes
+  hosts: worker1,worker2
+  become: yes
+  tasks:
+    # 1. Create Hadoop directories
+    - name: Create Hadoop directories
+      shell: |
+        cd /usr/local/hadoop
+        mkdir -p hadoop_tmp/hdfs/datanode
+        chmod 777 hadoop_tmp/
+      args:
+        creates: /usr/local/hadoop/hadoop_tmp/hdfs/datanode
+
+    # 2. Update hadoop-env.sh
+    - name: Update hadoop-env.sh
+      lineinfile:
+        path: /usr/local/hadoop/etc/hadoop/hadoop-env.sh
+        line: 'export JAVA_HOME=''/usr/lib/jvm/java-11-openjdk-amd64'''
+        insertafter: EOF
+
+
+    # 3. Ensure <configuration> element exists in hdfs-site.xml
+    - name: Ensure <configuration> element exists in hdfs-site.xml
+      xml:
+        path: /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+        xpath: /configuration
+        state: present
+
+    # 4. Add HDFS properties using the XML module
+    - name: Add HDFS properties to hdfs-site.xml
+      xml:
+        pretty_print: yes
+        path: /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+        xpath: /configuration
+        add_children:
+          - property:
+              name: dfs.replication
+              value: "2"
+          - property:
+              name: dfs.permissions
+              value: "false"
+          - property:
+              name: dfs.datanode.data.dir
+              value: "/usr/local/hadoop/hadoop_tmp/hdfs/datanode"
+

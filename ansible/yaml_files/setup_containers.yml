@@ -1,0 +1,47 @@
+- name: Set up Hadoop containers
+  hosts: hadoop
+  become: yes
+  tasks:
+
+    #    - name: Update package lists
+    # apt:
+    #   update_cache: yes
+
+    - name: Upgrade packages
+      apt:
+       upgrade: yes
+       force_apt_get: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - rsync
+          - wget
+          - vim
+          - iputils-ping
+          - htop
+          - openjdk-11-jdk
+          - ssh
+          - net-tools
+          - libxml2-dev
+          - libxslt1-dev
+          - python3-dev
+          - gcc
+        state: present
+        update_cache: yes
+
+    - name: Install Python
+      apt:
+        name: python3-pip
+        state: present
+    - name: Install packaging library
+      pip:
+        name: packaging
+        state: present
+
+    - name: Install lxml using pip
+      pip:
+        name: lxml
+        state: present
+

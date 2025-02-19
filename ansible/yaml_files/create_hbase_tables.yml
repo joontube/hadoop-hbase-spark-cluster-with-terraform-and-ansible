@@ -1,0 +1,25 @@
+- name: Create HBase tables
+  hosts: master1
+  become: yes
+  tasks:
+    - name: Create HBase table 'news_comments'
+      shell: |
+        echo "create 'news_comments', {NAME => 'search'}, {NAME => 'news'}, {NAME => 'comments'}" | /usr/local/hbase/bin/hbase shell
+      args:
+        executable: /bin/bash
+      register: result_news_comments
+
+    - name: Debug output for 'news_comments' creation
+      debug:
+        msg: "{{ result_news_comments.stdout }}"
+
+    - name: Create HBase table 'news_info'
+      shell: |
+        echo "create 'news_info', {NAME => 'search'}, {NAME => 'news'}, {NAME => 'comments'}, {NAME => 'status'}" | /usr/local/hbase/bin/hbase shell
+      args:
+        executable: /bin/bash
+      register: result_news_info
+
+    - name: Debug output for 'news_info' creation
+      debug:
+        msg: "{{ result_news_info.stdout }}"

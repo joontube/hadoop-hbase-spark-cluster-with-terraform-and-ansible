@@ -1,0 +1,26 @@
+- name: Start Spark Connect
+  hosts: master1
+  become: yes
+  tasks:
+
+    - name: Start Spark Connect
+      environment:
+        PATH: "{{ ansible_env.PATH }}:/usr/local/spark/sbin"
+      shell: |
+        start-connect-server.sh \
+        --conf spark.connect.grpc.binding.port=33465 \
+        --packages org.apache.spark:spark-connect_2.12:3.4.4
+      register: spark_connect_start_output
+
+    - name: Display spark_connect_start output
+      debug:
+        var: spark_connect_start_output.stdout
+
+
+    - name: Check JPS
+      shell: jps
+      register: jps_output
+
+    - name: Display JPS output
+      debug:
+        var: jps_output.stdout
