@@ -24,18 +24,22 @@ ansible-playbook ./yaml_files/setup_hbase.yml
 echo "Running setup_spark.yml..."
 ansible-playbook ./yaml_files/setup_spark.yml
 
+# 8. Hadoop 시작
 echo "Running start_hadoop.yml"
 ansible-playbook ./yaml_files/start_hadoop.yml
 
+# 9. Zookeeper 시작
 echo "Running start_zookeeper.yml"
 ansible-playbook ./yaml_files/start_zookeeper.yml
 
+# 10. Hbase 시작하고 테이블 생성
 echo "Running start_hbase.yml"
 #ansible-playbook ./yaml_files/start_hbase.yml
 docker exec -it master1 sudo /usr/local/hbase/bin/start-hbase.sh
 docker exec -it master1 sudo /usr/local/hbase/bin/hbase-daemon.sh start rest
 ansible-playbook ./yaml_files/create_hbase_tables.yml
 
+# 11. Spark Connect 시작
 echo "Running start_spark.yml"
 #ansible-playbook ./yaml_files/start_spark.yml
 docker exec -it /usr/local/spark/sbin/start-connect-server.sh   --conf spark.connect.grpc.binding.port=33465 --packages org.apache.spark:spark-connect_2.12:3.4.4
